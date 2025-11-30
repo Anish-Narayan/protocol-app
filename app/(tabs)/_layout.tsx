@@ -1,33 +1,45 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
-
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Home, Settings, Cpu, Pyramid } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { PROTOCOL_THEMES } from '../../constants/ProtocolThemes';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const [themeName, setThemeName] = useState<'scifi' | 'egypt'>('scifi');
+
+  useEffect(() => {
+    AsyncStorage.getItem('app_theme').then((val) => {
+      if (val === 'scifi' || val === 'egypt') setThemeName(val);
+    });
+  }, []);
+
+  const theme = PROTOCOL_THEMES[themeName];
+  const colors = theme.colors;
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+    <Tabs screenOptions={{
+      headerShown: false,
+      tabBarStyle: { 
+        backgroundColor: colors.surface, 
+        borderTopColor: colors.border,
+        height: 60,
+        paddingBottom: 5,
+        paddingTop: 5
+      },
+      tabBarActiveTintColor: colors.primary,
+      tabBarInactiveTintColor: colors.textMuted,
+      tabBarShowLabel: false,
+    }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color }) => <Home color={color} size={24} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="config"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          tabBarIcon: ({ color }) => <Settings color={color} size={24} />,
         }}
       />
     </Tabs>
