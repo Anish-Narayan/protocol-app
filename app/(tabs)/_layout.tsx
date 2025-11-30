@@ -33,13 +33,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ color }) => <Home color={color} size={24} />,
+          tabBarIcon: ({ color }: { color?: string }) => <Home color={color} size={24} />,
         }}
       />
       <Tabs.Screen
         name="config"
         options={{
-          tabBarIcon: ({ color }) => <Settings color={color} size={24} />,
+          tabBarIcon: ({ color }: { color?: string }) => <Settings color={color} size={24} />,
         }}
       />
     </Tabs>
