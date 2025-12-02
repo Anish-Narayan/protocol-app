@@ -1,53 +1,38 @@
+// apps/(tabs)/index.tsx
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, AppState, ActivityIndicator } from 'react-native';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { db, auth } from '../../firebaseConfig';
-import { PROTOCOL_THEMES } from '../../constants/ProtocolThemes';
-import { ShieldAlert, Cpu, Check, Sun, LogOut, Moon, Pyramid } from 'lucide-react-native';
+import { ShieldAlert, Cpu, Check, Sun, LogOut, Pyramid } from 'lucide-react-native';
 import NumberInputModal from '../../components/NumberInputModal';
+import { useTheme } from '../../context/ThemeContext'; // Import Context
 
-// --- UTILS ---
+// Utils
 const getTodayString = () => new Date().toISOString().split('T')[0];
 const sortPenalties = (p: any[]) => [...p].sort((a, b) => b.duration - a.duration);
 
 export default function HomeScreen() {
-  const [themeName, setThemeName] = useState<'scifi' | 'egypt'>('scifi');
+  // Replace local state with Context
+  const { themeName, theme, toggleTheme } = useTheme(); 
+  const colors = theme.colors;
+
   const [dailyData, setDailyData] = useState({ tasks: [], penalties: [], date: '' });
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // MODAL STATE
   const [modalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState<'partial' | 'reduce' | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
   const user = auth.currentUser;
 
-  // --- THEME MANAGEMENT ---
-  const loadTheme = async () => {
-    const t = await AsyncStorage.getItem('app_theme');
-    if (t === 'scifi' || t === 'egypt') setThemeName(t);
-  };
+  // No loadTheme logic here anymore. It's in the Context.
 
-  useEffect(() => { loadTheme(); }, []);
-
-  const toggleTheme = async () => {
-    const next = themeName === 'scifi' ? 'egypt' : 'scifi';
-    setThemeName(next);
-    await AsyncStorage.setItem('app_theme', next);
-  };
-
-  const currentTheme = PROTOCOL_THEMES[themeName];
-  const colors = currentTheme.colors;
-
-  // --- DATA LOADING & ROLLOVER LOGIC ---
   const loadData = useCallback(async () => {
     if (!user) return;
     setRefreshing(true);
-    await loadTheme();
     const today = getTodayString();
 
     try {
@@ -73,24 +58,20 @@ export default function HomeScreen() {
 
   useEffect(() => {
     loadData();
-    // Re-check date when app comes to foreground
     const sub = AppState.addEventListener('change', next => {
       if (next === 'active') loadData();
     });
     return () => sub.remove();
   }, [loadData]);
 
+  // ... (Keep performRollover, updateDB, toggleTask, togglePenalty, Modal handlers exactly as they were) ...
   const performRollover = async (todayStr: string, previousDailyData: any) => {
     let newPenaltiesMap: any = {};
-
-    // 1. Accumulate previous penalties (that weren't paid off)
     if (previousDailyData.penalties) {
       previousDailyData.penalties.forEach((p: any) => {
         if (!p.completed) newPenaltiesMap[p.label] = (newPenaltiesMap[p.label] || 0) + p.duration;
       });
     }
-
-    // 2. Accumulate failed tasks from yesterday
     if (previousDailyData.tasks) {
       previousDailyData.tasks.forEach((t: any) => {
         if (t.completed) return;
@@ -98,12 +79,10 @@ export default function HomeScreen() {
         if (penaltyTime > 0) newPenaltiesMap[t.label] = (newPenaltiesMap[t.label] || 0) + penaltyTime;
       });
     }
-
     const mergedPenalties = Object.entries(newPenaltiesMap).map(([label, duration]) => ({
       label, duration, completed: false, id: Math.random().toString(36).substr(2, 9)
     }));
 
-    // 3. Load Base Schedule (if Weekday)
     let newTasks: any[] = [];
     const dayOfWeek = new Date().getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -117,7 +96,6 @@ export default function HomeScreen() {
         }));
       }
     }
-
     const newDaily = { date: todayStr, tasks: newTasks, penalties: sortPenalties(mergedPenalties), lastRun: todayStr };
     await setDoc(doc(db, 'users', user!.uid, 'schedules', 'daily'), newDaily);
     setDailyData(newDaily as any);
@@ -127,8 +105,6 @@ export default function HomeScreen() {
     setDailyData(newData);
     await updateDoc(doc(db, 'users', user!.uid, 'schedules', 'daily'), newData);
   };
-
-  // --- ACTIONS ---
 
   const toggleTask = (task: any) => {
     const updatedTasks = dailyData.tasks.map((t: any) =>
@@ -144,7 +120,6 @@ export default function HomeScreen() {
     updateDB({ ...dailyData, penalties: updatedPenalties });
   };
 
-  // --- LONG PRESS HANDLERS ---
   const handleLongPressTask = (task: any) => {
     if (task.completed) return;
     setSelectedItem(task);
@@ -159,18 +134,15 @@ export default function HomeScreen() {
     setModalVisible(true);
   };
 
-  // --- MODAL CONFIRMATION ---
   const onModalConfirm = (mins: number) => {
     if (modalType === 'partial') {
       const remaining = selectedItem.duration - mins;
       if (remaining <= 0) {
-        toggleTask(selectedItem); // Done if completed more than duration
+        toggleTask(selectedItem);
       } else {
-        // Mark task done (partially)
         const updatedTasks = dailyData.tasks.map((t: any) =>
           t === selectedItem ? { ...t, completed: true, partiallyCompleted: true, remaining: 0 } : t
         );
-        // Add new Penalty immediately
         const newPenalty = {
           id: Math.random().toString(36).substr(2, 9),
           label: selectedItem.label,
@@ -193,7 +165,7 @@ export default function HomeScreen() {
     }
   };
 
-  // --- STYLES ---
+  // Styles are recreated on render to capture theme changes
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background, paddingTop: 60, paddingHorizontal: 20 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 15 },
@@ -202,7 +174,7 @@ export default function HomeScreen() {
     sectionTitle: { color: colors.text, fontSize: 16, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 10, marginTop: 20 },
     card: {
       backgroundColor: colors.surface, borderLeftWidth: 4, padding: 16, marginBottom: 10,
-      borderRadius: currentTheme.roundness, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      borderRadius: theme.roundness, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
       shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2,
     },
     taskActive: { borderLeftColor: colors.primary, borderColor: colors.primaryDim, borderWidth: 1 },
@@ -210,7 +182,7 @@ export default function HomeScreen() {
     penaltyActive: { borderLeftColor: colors.danger, backgroundColor: colors.dangerDim, borderColor: colors.danger, borderWidth: 1 },
     label: { color: colors.text, fontSize: 16, fontWeight: '600' },
     subLabel: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
-    checkBtn: { width: 30, height: 30, borderWidth: 1, borderColor: colors.primary, justifyContent: 'center', alignItems: 'center', borderRadius: currentTheme.roundness },
+    checkBtn: { width: 30, height: 30, borderWidth: 1, borderColor: colors.primary, justifyContent: 'center', alignItems: 'center', borderRadius: theme.roundness },
     checkBtnPenalty: { borderColor: colors.danger },
   });
 
@@ -223,7 +195,7 @@ export default function HomeScreen() {
         onClose={() => setModalVisible(false)}
         onConfirm={onModalConfirm}
         title={modalType === 'partial' ? "MINUTES COMPLETED?" : "MINUTES REDEEMED?"}
-        theme={currentTheme}
+        theme={theme}
       />
 
       <View style={styles.header}>

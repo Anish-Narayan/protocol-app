@@ -1,56 +1,52 @@
+// apps/_layout.tsx
 import { useEffect, useState } from 'react';
 import { StatusBar, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import { auth } from '../firebaseConfig';
-import { PROTOCOL_THEMES } from '../constants/ProtocolThemes';
 import AuthScreen from '../components/AuthScreen';
+import { ThemeProvider, useTheme } from '../context/ThemeContext'; // Import Context
 
 export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <RootLayoutNav />
+    </ThemeProvider>
+  );
+}
+
+function RootLayoutNav() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [themeName, setThemeName] = useState<'scifi' | 'egypt'>('scifi');
+  const [authLoading, setAuthLoading] = useState(true);
+  const { theme, themeName, toggleTheme, loading: themeLoading } = useTheme();
 
-  // Load Theme
-  useEffect(() => {
-    AsyncStorage.getItem('app_theme').then((val) => {
-      if (val === 'scifi' || val === 'egypt') setThemeName(val);
-    });
-  }, []);
-
-  // Listen for User
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      setLoading(false);
+      setAuthLoading(false);
     });
     return unsub;
   }, []);
 
-  const toggleTheme = () => {
-    const next = themeName === 'scifi' ? 'egypt' : 'scifi';
-    setThemeName(next);
-    AsyncStorage.setItem('app_theme', next);
-  };
+  // Wait for both Auth and Theme to load
+  if (authLoading || themeLoading) {
+    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+  }
 
-  if (loading) return <View style={{ flex: 1, backgroundColor: '#000' }} />;
-
-  const currentTheme = PROTOCOL_THEMES[themeName];
+  const colors = theme.colors;
 
   if (!user) {
     return (
-        <>
-            <StatusBar barStyle={currentTheme.colors.status as any} backgroundColor={currentTheme.colors.background} />
-            <AuthScreen themeName={themeName} toggleTheme={toggleTheme} currentTheme={currentTheme} />
-        </>
+      <>
+        <StatusBar barStyle={themeName === 'scifi' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
+        <AuthScreen themeName={themeName} toggleTheme={toggleTheme} currentTheme={theme} />
+      </>
     );
   }
 
   return (
     <>
-      <StatusBar barStyle={currentTheme.colors.status as any} backgroundColor={currentTheme.colors.background} />
+      <StatusBar barStyle={themeName === 'scifi' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
       </Stack>

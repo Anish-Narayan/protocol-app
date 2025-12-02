@@ -1,32 +1,28 @@
+// apps/(tabs)/config.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { db, auth } from '../../firebaseConfig';
-import { PROTOCOL_THEMES } from '../../constants/ProtocolThemes';
-import { Save, Upload, Plus, Trash2, FileJson } from 'lucide-react-native';
+import { Save, Upload, Plus, Trash2 } from 'lucide-react-native';
+import { useTheme } from '../../context/ThemeContext'; // Import Context
 
-// Utils
 const getTodayString = () => new Date().toISOString().split('T')[0];
 const timeToMinutes = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const calculateDuration = (s: string, e: string) => timeToMinutes(e) - timeToMinutes(s);
 
 export default function ConfigScreen() {
-  const [themeName, setThemeName] = useState<'scifi' | 'egypt'>('scifi');
+  // Replace local state with Context
+  const { themeName, theme } = useTheme();
+  const colors = theme.colors;
+
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const user = auth.currentUser;
 
-  // Load Theme
+  // Load Base Schedule only (Theme loaded via context)
   useEffect(() => {
-    const load = async () => {
-      const t = await AsyncStorage.getItem('app_theme');
-      if (t === 'scifi' || t === 'egypt') setThemeName(t);
-    };
-    load();
-    // Load Base Schedule
     if (user) {
       getDoc(doc(db, 'users', user.uid, 'schedules', 'base')).then(snap => {
         if (snap.exists()) setTasks(snap.data().tasks || []);
@@ -34,30 +30,20 @@ export default function ConfigScreen() {
     }
   }, [user]);
 
-  const currentTheme = PROTOCOL_THEMES[themeName];
-  const colors = currentTheme.colors;
-
+  // ... (Keep handleSave, handleJSONUpload, updateTask exactly as they were) ...
   const handleSave = async (overwriteToday = false) => {
     if (!user) return;
     setLoading(true);
-    
-    // Sort
     const sorted = [...tasks].sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
-    
-    // Save Base
     await setDoc(doc(db, 'users', user.uid, 'schedules', 'base'), { tasks: sorted, updatedAt: new Date() });
 
     if (overwriteToday) {
-        // Reset Daily Logic
         const today = getTodayString();
         const dailyRef = doc(db, 'users', user.uid, 'schedules', 'daily');
         const dailySnap = await getDoc(dailyRef);
         const currentPenalties = dailySnap.exists() ? dailySnap.data().penalties || [] : [];
-        
-        // Weekend Check
         const isWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
         const activeTasks = isWeekend ? [] : sorted.map(t => ({...t, completed:false, partiallyCompleted:false, remaining:0}));
-
         await setDoc(dailyRef, { date: today, tasks: activeTasks, penalties: currentPenalties, lastRun: today });
         Alert.alert("SYSTEM UPDATE", "Base schedule saved & today's schedule reset.");
     } else {
@@ -70,16 +56,12 @@ export default function ConfigScreen() {
     try {
         const res = await DocumentPicker.getDocumentAsync({ type: 'application/json' });
         if (res.canceled) return;
-        
         const fileUri = res.assets[0].uri;
         const fileContent = await FileSystem.readAsStringAsync(fileUri);
         const json = JSON.parse(fileContent);
-        
-        // Process
         const processed = json.map((t:any) => ({
             ...t, duration: calculateDuration(t.start, t.end)
         }));
-
         Alert.alert(
             "IMPORT PROTOCOL", 
             "Replace existing or Append?",
@@ -106,10 +88,10 @@ export default function ConfigScreen() {
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background, paddingTop: 60, paddingHorizontal: 20 },
     headerTitle: { color: colors.text, fontSize: 24, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 20 },
-    card: { backgroundColor: colors.surface, padding: 15, marginBottom: 10, borderRadius: currentTheme.roundness, borderWidth: 1, borderColor: colors.border },
+    card: { backgroundColor: colors.surface, padding: 15, marginBottom: 10, borderRadius: theme.roundness, borderWidth: 1, borderColor: colors.border },
     row: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-    input: { flex: 1, backgroundColor: colors.background, color: colors.text, padding: 8, borderWidth: 1, borderColor: colors.border, borderRadius: currentTheme.roundness },
-    btn: { padding: 15, borderRadius: currentTheme.roundness, alignItems: 'center', marginBottom: 10, flexDirection: 'row', justifyContent: 'center', gap: 10 },
+    input: { flex: 1, backgroundColor: colors.background, color: colors.text, padding: 8, borderWidth: 1, borderColor: colors.border, borderRadius: theme.roundness },
+    btn: { padding: 15, borderRadius: theme.roundness, alignItems: 'center', marginBottom: 10, flexDirection: 'row', justifyContent: 'center', gap: 10 },
     btnPrimary: { backgroundColor: colors.primaryDim, borderWidth: 1, borderColor: colors.primary },
     btnText: { color: colors.primary, fontWeight: 'bold', textTransform: 'uppercase' },
     label: { color: colors.textMuted, fontSize: 10, marginBottom: 2, textTransform: 'uppercase' }
@@ -119,7 +101,6 @@ export default function ConfigScreen() {
     <View style={styles.container}>
       <Text style={styles.headerTitle}>Configuration</Text>
       
-      {/* Toolbar */}
       <View style={styles.row}>
         <TouchableOpacity style={[styles.btn, styles.btnPrimary, {flex:1}]} onPress={handleJSONUpload}>
             <Upload size={16} color={colors.primary} />
